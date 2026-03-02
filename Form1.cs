@@ -15,6 +15,12 @@ namespace Editordetexto
 {
     public partial class Form1 : Form
     {
+        private List<string> Identificadores; // almacena nombres reales de identificadores en el orden emitido
+        private int idConsumeIndex;           // índice para consumir Identificadores desde NextToken
+        private string lastIdentifierName;    // nombre real del ultimo identificador devuelto por NextToken
+        private bool hasInclude;              // true si se detectó include/define válido
+        private bool hasMain;                 // true si se detectó función main
+
         public Form1()
         {
             InitializeComponent();
@@ -31,6 +37,8 @@ namespace Editordetexto
                 "struct","union","enum","sizeof",
                 "define","include"
             };
+
+            Identificadores = new List<string>();
         }
         private void abrirToolStripMenuItem_Click(object sender, EventArgs e)
         {
@@ -274,7 +282,11 @@ namespace Editordetexto
                 if (Palabra_Reservada())
                     Escribir.Write(elemento.ToLower() + "\n");
                 else
+                {
+                    // guardamos el nombre real del identificador para que NextToken pueda exponerlo al parser
+                    Identificadores.Add(elemento);
                     Escribir.Write("identificador\n");
+                }
             }
         }
 
@@ -392,6 +404,23 @@ namespace Editordetexto
 
             linea_del_token = Numero_linea;
 
+            // Si el token es "identificador", exponemos el nombre real sincronizado desde Identificadores
+            if (t == "identificador")
+            {
+                if (Identificadores != null && idConsumeIndex < Identificadores.Count)
+                {
+                    lastIdentifierName = Identificadores[idConsumeIndex++];
+                }
+                else
+                {
+                    lastIdentifierName = null;
+                }
+            }
+            else
+            {
+                lastIdentifierName = null;
+            }
+
             return t;
         }
 
@@ -403,6 +432,13 @@ namespace Editordetexto
         {
             Numero_linea = 1;
             N_error = 0;
+
+            // reiniciar estructuras auxiliares
+            Identificadores.Clear();
+            idConsumeIndex = 0;
+            lastIdentifierName = null;
+            hasInclude = false;
+            hasMain = false;
 
             Leer = new StreamReader(archivo);
             string archivoSalida = archivo.Remove(archivo.Length - 1) + "back";
@@ -476,9 +512,26 @@ namespace Editordetexto
         {
             Numero_linea = 1;
             Leer = new StreamReader(archivoback);
+
+            // reiniciar consumo de identificadores para que NextToken devuelva nombres correctos
+            idConsumeIndex = 0;
+            lastIdentifierName = null;
+            hasInclude = false;
+            hasMain = false;
+
             token = NextToken();
             Cabecera();
             Leer.Close();
+
+            // sugerencias si faltan
+            if (!hasInclude)
+            {
+                TxtboxSalida.AppendText("\r\nSugerencia: No se detectó ninguna cabecera (#include o #define). Añade una directiva #include o #define si es necesario (ej: #include <stdio.h>).\r\n");
+            }
+            if (!hasMain)
+            {
+                TxtboxSalida.AppendText("\r\nSugerencia: No se detectó la función 'main'. Añade la función principal (ej: int main() { /*...*/ }) para el punto de entrada.\r\n");
+            }
         }
 
         private void Cabecera()
@@ -505,10 +558,23 @@ namespace Editordetexto
                     token = NextToken();
                     string id = token;
 
+                    // obtener nombre real si el token es identificador
+                    string funcName = null;
+                    if (id == "identificador")
+                        funcName = lastIdentifierName;
+                    else
+                        funcName = id;
+
                     token = NextToken();
 
                     if (token == "(")
                     {
+                        // si es main, marcarlo
+                        if (!string.IsNullOrEmpty(funcName) && funcName == "main")
+                        {
+                            hasMain = true;
+                        }
+
                         Parametros();
                         BloqueDeSentencias();
 
@@ -1279,6 +1345,8 @@ namespace Editordetexto
                     token = Leer.ReadLine();
                     while (token == "LF") token = Leer.ReadLine();
                     if (token == null) { Error("define incompleto"); return 0; }
+                    // consideramos define como cabecera válida
+                    hasInclude = true;
                     return 1;
 
                 default:
@@ -1298,9 +1366,15 @@ namespace Editordetexto
                 if (token == null) { Error("libreria inválida"); return 0; }
                 token = Leer.ReadLine();
                 if (token != ">") { Error(token, ">"); return 0; }
+                // marcar que hay include
+                hasInclude = true;
                 return 1;
             }
-            else if (token == "Cadena") return 1;
+            else if (token == "Cadena")
+            {
+                hasInclude = true;
+                return 1;
+            }
 
             Error("Formato include");
             return 0;
