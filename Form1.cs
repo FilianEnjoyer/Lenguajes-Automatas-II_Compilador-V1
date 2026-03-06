@@ -15,12 +15,17 @@ namespace Editordetexto
 {
     public partial class Form1 : Form
     {
+        // consumible por NextToken
         private List<string> Identificadores; // almacena nombres reales de identificadores en el orden emitido
         private int idConsumeIndex;           // índice para consumir Identificadores desde NextToken
         private string lastIdentifierName;    // nombre real del ultimo identificador devuelto por NextToken
         private bool hasInclude;              // true si se detectó include/define válido
         private bool hasMain;                 // true si se detectó función main
 
+        // Tabla de símbolos
+        private SymbolTableManager symbolTable;
+        private string currentType; // tipo actual durante declaraciones
+        private string currentFunctionName; // nombre de la función que se está procesando
         public Form1()
         {
             InitializeComponent();
@@ -40,6 +45,7 @@ namespace Editordetexto
 
             Identificadores = new List<string>();
         }
+        // ----- Menú / acciones básicas (abrir/guardar/compilar) -----
         private void abrirToolStripMenuItem_Click(object sender, EventArgs e)
         {
             OpenFileDialog VentanaAbrir = new OpenFileDialog();
@@ -47,13 +53,12 @@ namespace Editordetexto
             if (VentanaAbrir.ShowDialog() == DialogResult.OK)
             {
                 archivo = VentanaAbrir.FileName;
-                using (StreamReader Leer = new StreamReader(archivo))
+                using (StreamReader LeerF = new StreamReader(archivo))
                 {
-                    CajaTxt1.Text = Leer.ReadToEnd();
+                    CajaTxt1.Text = LeerF.ReadToEnd();
                 }
-
             }
-            Form1.ActiveForm.Text = "Mi Compilador - " + archivo;
+            this.Text = "Mi Compilador - " + archivo;
             compilarSoluciónToolStripMenuItem.Enabled = true;
         }
         private void guardar()
@@ -62,9 +67,9 @@ namespace Editordetexto
             VentanaGuardar.Filter = "Texto|*.c";
             if (archivo != null)
             {
-                using (StreamWriter Escribir = new StreamWriter(archivo))
+                using (StreamWriter EscribirF = new StreamWriter(archivo))
                 {
-                    Escribir.Write(CajaTxt1.Text);
+                    EscribirF.Write(CajaTxt1.Text);
                 }
             }
             else
@@ -72,24 +77,22 @@ namespace Editordetexto
                 if (VentanaGuardar.ShowDialog() == DialogResult.OK)
                 {
                     archivo = VentanaGuardar.FileName;
-                    using (StreamWriter Escribir = new StreamWriter(archivo))
+                    using (StreamWriter EscribirF = new StreamWriter(archivo))
                     {
-                        Escribir.Write(CajaTxt1.Text);
+                        EscribirF.Write(CajaTxt1.Text);
                     }
                 }
             }
-            Form1.ActiveForm.Text = "Mi Compilador - " + archivo;
+            this.Text = "Mi Compilador - " + archivo;
         }
         private void gurdarToolStripMenuItem_Click(object sender, EventArgs e)
         {
             guardar();
-
         }
         private void nuevoToolStripMenuItem_Click(object sender, EventArgs e)
         {
             CajaTxt1.Clear();
             archivo = null;
-
         }
         private void guardarComoToolStripMenuItem_Click(object sender, EventArgs e)
         {
@@ -98,17 +101,18 @@ namespace Editordetexto
             if (VentanaGuardar.ShowDialog() == DialogResult.OK)
             {
                 archivo = VentanaGuardar.FileName;
-                using (StreamWriter Escribir = new StreamWriter(archivo))
+                using (StreamWriter EscribirF = new StreamWriter(archivo))
                 {
-                    Escribir.Write(CajaTxt1.Text);
+                    EscribirF.Write(CajaTxt1.Text);
                 }
             }
-            Form1.ActiveForm.Text = "Mi Compilador - " + archivo;
+            this.Text = "Mi Compilador - " + archivo;
         }
         private void salirToolStripMenuItem_Click(object sender, EventArgs e)
         {
             Application.Exit();
         }
+
         private void compilarSoluciónToolStripMenuItem_Click(object sender, EventArgs e)
         {
             TxtboxSalida.Clear();
@@ -381,9 +385,9 @@ namespace Editordetexto
             N_error++;
         }
 
-        private void Error(string token, string esperado)
+        private void Error(string tokenLocal, string esperado)
         {
-            TxtboxSalida.AppendText($"Error: se esperaba '{esperado}', pero se encontró '{token}', línea {linea_del_token}\n");
+            TxtboxSalida.AppendText($"Error: se esperaba '{esperado}', pero se encontró '{tokenLocal}', línea {linea_del_token}\n");
             N_error++;
         }
 
@@ -519,6 +523,11 @@ namespace Editordetexto
             hasInclude = false;
             hasMain = false;
 
+            // Inicializar / resetear tabla de símbolos
+            symbolTable = new SymbolTableManager();
+            symbolTable.Reset();
+            symbolTable.AddBuiltinFunction("printf", "int");
+
             token = NextToken();
             Cabecera();
             Leer.Close();
@@ -555,35 +564,52 @@ namespace Editordetexto
                 case "void":
                 case "Tipo":
                     string tipo = token;
+                    // guardar tipo actual para que Declaracion_Variable_Global_Logica lo pueda usar
+                    currentType = tipo;
+
+                    // LEER el siguiente token (declarador). Capturamos su tipo y el nombre real ANTES
+                    // de avanzar de nuevo, para no perder lastIdentifierName.
                     token = NextToken();
-                    string id = token;
-
-                    // obtener nombre real si el token es identificador
-                    string funcName = null;
-                    if (id == "identificador")
-                        funcName = lastIdentifierName;
-                    else
-                        funcName = id;
-
+                    string idToken = token;               // por ejemplo: "identificador"
+                    string idNombreReal = null;
+                    if (idToken == "identificador")
+                        idNombreReal = lastIdentifierName;
+                    // ahora avanzamos al siguiente token (podría ser '(' o '=' o ';' etc.)
                     token = NextToken();
 
                     if (token == "(")
                     {
-                        // si es main, marcarlo
-                        if (!string.IsNullOrEmpty(funcName) && funcName == "main")
+                        // si es main, marcarlo (usando el nombre real si está disponible)
+                        if (!string.IsNullOrEmpty(idNombreReal) && idNombreReal == "main")
                         {
                             hasMain = true;
                         }
+
+                        // registrar la función en la tabla (si tenemos nombre)
+                        string funcName = idNombreReal ?? idToken;
+                        if (!string.IsNullOrEmpty(funcName))
+                        {
+                            if (!symbolTable.AddFunction(funcName, tipo, out string err))
+                            {
+                                Error(err);
+                            }
+                        }
+
+                        // establecer nombre de la función actual para Parametros()
+                        currentFunctionName = idNombreReal ?? funcName;
 
                         Parametros();
                         BloqueDeSentencias();
 
                         token = NextToken();
+                        currentFunctionName = null; // limpiar
                         Cabecera();
                     }
                     else
                     {
-                        Declaracion_Variable_Global_Logica(id);
+                        // Es una declaración global (o variable) — usar currentType
+                        // Pasamos tanto el token como el nombre real capturado (si lo tuvimos)
+                        Declaracion_Variable_Global_Logica(idToken, idNombreReal);
                         token = NextToken();
                         Cabecera();
                     }
@@ -606,7 +632,9 @@ namespace Editordetexto
                 if (token != "int" && token != "float" && token != "char" && token != "double")
                     Error(token, "tipo de dato");
 
+                string tipoParametro = token;
                 token = NextToken();
+
                 if (token != "identificador")
                 {
                     Error(token, "identificador");
@@ -615,7 +643,29 @@ namespace Editordetexto
                 }
                 else
                 {
+                    // registrar parámetro: el nombre está en lastIdentifierName
+                    string nombreParametro = lastIdentifierName;
+
+                    if (!string.IsNullOrEmpty(nombreParametro))
+                    {
+                        if (!symbolTable.AddVariable(nombreParametro, tipoParametro, out string errVar))
+                        {
+                            Error(errVar);
+                        }
+                    }
+
+                    // además añadir el tipo a la firma de la función definida
+                    if (!string.IsNullOrEmpty(currentFunctionName))
+                    {
+                        var f = symbolTable.GetFunction(currentFunctionName);
+                        if (f != null)
+                        {
+                            f.TiposParametros.Add(tipoParametro);
+                        }
+                    }
+
                     token = NextToken();
+
                     while (token == "[")
                     {
                         token = NextToken();
@@ -644,6 +694,10 @@ namespace Editordetexto
         private void BloqueDeSentencias()
         {
             if (token != "{") { Error(token, "{"); return; }
+
+            // crear nuevo ámbito para el bloque
+            symbolTable.EnterScope();
+
             token = NextToken();
 
             while (token != "}" && token != "Fin" && token != null)
@@ -700,6 +754,11 @@ namespace Editordetexto
                             string inc = token;
                             token = NextToken();
                             if (token != "identificador") { Error(token, "identificador"); break; }
+                            // verificar existencia
+                            if (!symbolTable.VariableDeclared(lastIdentifierName) && !symbolTable.FunctionExists(lastIdentifierName))
+                            {
+                                Error($"La variable '{lastIdentifierName}' no ha sido declarada");
+                            }
                             token = NextToken();
                             if (token != ";") Error(token, ";");
                             token = NextToken();
@@ -714,6 +773,9 @@ namespace Editordetexto
                 }
             }
             if (token != "}") Error("Se esperaba '}'");
+
+            // salir del ámbito del bloque
+            symbolTable.ExitScope();
         }
         private void SentenciaOBloque()
         {
@@ -751,10 +813,22 @@ namespace Editordetexto
         private void Sentencia()
         {
             string id = token;
+            string nameId = (id == "identificador") ? lastIdentifierName : id;
+
+            // si es identificador, comprobar existencia (variable o función)
+            if (id == "identificador")
+            {
+                if (!symbolTable.VariableDeclared(nameId) && !symbolTable.FunctionExists(nameId))
+                {
+                    Error($"La variable o función '{nameId}' no ha sido declarada");
+                }
+            }
+
             token = NextToken();
 
             if (token == "(")
             {
+                // llamada a función — ya validamos existencia arriba
                 token = NextToken();
                 if (token != ")")
                 {
@@ -1003,10 +1077,6 @@ namespace Editordetexto
                    t == ">=" || t == "<=" || t == "&&" || t == "||" || t == "!";
         }
 
-        //
-        // ---------- NUEVO: ANALIZADOR DE EXPRESIONES (POR NIVELES) --------------
-        //
-
         private void Expresion()
         {
             Condicion();
@@ -1199,6 +1269,12 @@ namespace Editordetexto
 
             if (token == "identificador")
             {
+                // comprobar que existe variable o función
+                if (!symbolTable.VariableDeclared(lastIdentifierName) && !symbolTable.FunctionExists(lastIdentifierName))
+                {
+                    Error($"La variable o función '{lastIdentifierName}' no ha sido declarada");
+                }
+
                 token = NextToken();
 
                 if (token == "(")
@@ -1255,14 +1331,30 @@ namespace Editordetexto
 
         private void Declaracion_Local()
         {
+            // token actualmente es el tipo (ej. "int")
+            currentType = token;
+
+            // avanzar para leer el declarador (esperamos identificador)
+            token = NextToken(); // ahora token debería ser "identificador"
+            string idToken = token;
+
+            // capturar el nombre real inmediatamente si es identificador
+            string nombreIdent = null;
+            if (idToken == "identificador")
+                nombreIdent = lastIdentifierName;
+
+            // avanzar al siguiente token (esto podría borrar lastIdentifierName)
             token = NextToken();
-            string id = token;
-            token = NextToken();
-            Declaracion_Variable_Global_Logica(id);
+
+            // pasar tanto el token como el nombre real al procesador
+            Declaracion_Variable_Global_Logica(idToken, nombreIdent);
+
+            // después de procesar la declaración, continuar leyendo siguiente token
             token = NextToken();
         }
 
-        private void Declaracion_Variable_Global_Logica(string identificador_actual)
+        // antiguo: private void Declaracion_Variable_Global_Logica(string identificador_actual)
+        private void Declaracion_Variable_Global_Logica(string identificador_actual, string nombreReal = null)
         {
             void ProcesarDeclarador()
             {
@@ -1294,13 +1386,50 @@ namespace Editordetexto
                 }
             }
 
+            // registrar el primer identificador si aplica
+            if (identificador_actual == "identificador")
+            {
+                string nombre = nombreReal ?? lastIdentifierName;
+                if (!string.IsNullOrEmpty(nombre))
+                {
+                    if (!symbolTable.AddVariable(nombre, currentType, out string errAdd))
+                    {
+                        Error(errAdd);
+                    }
+                }
+                else
+                {
+                    // caso improbable: no tenemos nombre real disponible
+                    Error("Identificador sin nombre disponible para la declaración");
+                }
+            }
+
             ProcesarDeclarador();
 
             while (token == ",")
             {
                 token = NextToken();
                 if (token != "identificador") { Error(token, "identificador"); return; }
+
+                // capturar nombre real del siguiente identificador (ya que NextToken lo dejó en lastIdentifierName)
+                string nombre2 = lastIdentifierName;
+
+                // avanzar al token siguiente al identificador
                 token = NextToken();
+
+                // registrar la variable
+                if (!string.IsNullOrEmpty(nombre2))
+                {
+                    if (!symbolTable.AddVariable(nombre2, currentType, out string errAdd2))
+                    {
+                        Error(errAdd2);
+                    }
+                }
+                else
+                {
+                    Error("Identificador sin nombre disponible en lista.");
+                }
+
                 ProcesarDeclarador();
             }
 
@@ -1390,7 +1519,6 @@ namespace Editordetexto
         private void CajaTxt1_TextChanged(object sender, EventArgs e)
         {
             compilarSoluciónToolStripMenuItem.Enabled = true;
-
         }
     }
 }
