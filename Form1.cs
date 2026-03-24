@@ -26,6 +26,8 @@ namespace Editordetexto
         private SymbolTableManager symbolTable;
         private string currentType; // tipo actual durante declaraciones
         private string currentFunctionName; // nombre de la función que se está procesando
+
+
         public Form1()
         {
             InitializeComponent();
@@ -45,7 +47,11 @@ namespace Editordetexto
 
             Identificadores = new List<string>();
         }
-        // ----- Menú / acciones básicas (abrir/guardar/compilar) -----
+
+        // =========================================================
+        // MENÚ / ACCIONES BÁSICAS
+        // =========================================================
+
         private void abrirToolStripMenuItem_Click(object sender, EventArgs e)
         {
             OpenFileDialog VentanaAbrir = new OpenFileDialog();
@@ -61,6 +67,7 @@ namespace Editordetexto
             this.Text = "Mi Compilador - " + archivo;
             compilarSoluciónToolStripMenuItem.Enabled = true;
         }
+
         private void guardar()
         {
             SaveFileDialog VentanaGuardar = new SaveFileDialog();
@@ -85,15 +92,18 @@ namespace Editordetexto
             }
             this.Text = "Mi Compilador - " + archivo;
         }
+
         private void gurdarToolStripMenuItem_Click(object sender, EventArgs e)
         {
             guardar();
         }
+
         private void nuevoToolStripMenuItem_Click(object sender, EventArgs e)
         {
             CajaTxt1.Clear();
             archivo = null;
         }
+
         private void guardarComoToolStripMenuItem_Click(object sender, EventArgs e)
         {
             SaveFileDialog VentanaGuardar = new SaveFileDialog();
@@ -108,6 +118,7 @@ namespace Editordetexto
             }
             this.Text = "Mi Compilador - " + archivo;
         }
+
         private void salirToolStripMenuItem_Click(object sender, EventArgs e)
         {
             Application.Exit();
@@ -118,6 +129,7 @@ namespace Editordetexto
             TxtboxSalida.Clear();
             if (archivo == null) guardar();
             else guardar();
+
             Numero_linea = 1;
             N_error = 0;
             elemento = "";
@@ -143,9 +155,24 @@ namespace Editordetexto
             }
         }
 
-        // ==========================================
-        //           ANALIZADOR LÉXICO
-        // ==========================================
+        private void TxtboxSalida_TextChanged(object sender, EventArgs e)
+        {
+            compilarSoluciónToolStripMenuItem.Enabled = true;
+        }
+
+        private void compilarToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+        }
+
+        private void CajaTxt1_TextChanged(object sender, EventArgs e)
+        {
+            compilarSoluciónToolStripMenuItem.Enabled = true;
+        }
+
+        // =========================================================
+        // ANALIZADOR LÉXICO
+        // =========================================================
+
         private char Tipo_caracter(int caracter)
         {
             if ((caracter >= 65 && caracter <= 90) || (caracter >= 97 && caracter <= 122) || caracter == 95)
@@ -245,7 +272,6 @@ namespace Editordetexto
             }
 
             Escribir.Write("caracter\n");
-
             i_caracter = Leer.Read();
         }
 
@@ -265,8 +291,7 @@ namespace Editordetexto
 
         private bool Palabra_Reservada()
         {
-            if (P_Reservadas.IndexOf(elemento.ToLower()) >= 0) return true;
-            return false;
+            return P_Reservadas.IndexOf(elemento.ToLower()) >= 0;
         }
 
         private void Identificador()
@@ -287,7 +312,6 @@ namespace Editordetexto
                     Escribir.Write(elemento.ToLower() + "\n");
                 else
                 {
-                    // guardamos el nombre real del identificador para que NextToken pueda exponerlo al parser
                     Identificadores.Add(elemento);
                     Escribir.Write("identificador\n");
                 }
@@ -363,15 +387,10 @@ namespace Editordetexto
             else
             {
                 Escribir.Write("/\n");
-
                 i_caracter = siguiente;
                 return true;
             }
         }
-
-        // ==========================================
-        //           MANEJO DE ERRORES Y UTILIDADES
-        // ==========================================
 
         private void Error(int i_caracter)
         {
@@ -408,17 +427,12 @@ namespace Editordetexto
 
             linea_del_token = Numero_linea;
 
-            // Si el token es "identificador", exponemos el nombre real sincronizado desde Identificadores
             if (t == "identificador")
             {
                 if (Identificadores != null && idConsumeIndex < Identificadores.Count)
-                {
                     lastIdentifierName = Identificadores[idConsumeIndex++];
-                }
                 else
-                {
                     lastIdentifierName = null;
-                }
             }
             else
             {
@@ -428,16 +442,11 @@ namespace Editordetexto
             return t;
         }
 
-        // ==========================================
-        //           ANALIZADORES
-        // ==========================================
-
         private void AnalizadorLexico()
         {
             Numero_linea = 1;
             N_error = 0;
 
-            // reiniciar estructuras auxiliares
             Identificadores.Clear();
             idConsumeIndex = 0;
             lastIdentifierName = null;
@@ -503,7 +512,6 @@ namespace Editordetexto
             }
 
             Escribir.Write("Fin\n");
-
             Escribir.Close();
             Leer.Close();
 
@@ -512,27 +520,29 @@ namespace Editordetexto
             TxtboxSalida.AppendText($"\nProceso finalizado. Errores: {N_error}\n");
         }
 
+        // =========================================================
+        // ANALIZADOR SINTÁCTICO
+        // =========================================================
+
         private void AnalizadorSintactico()
         {
             Numero_linea = 1;
             Leer = new StreamReader(archivoback);
 
-            // reiniciar consumo de identificadores para que NextToken devuelva nombres correctos
             idConsumeIndex = 0;
             lastIdentifierName = null;
             hasInclude = false;
             hasMain = false;
 
-            // Inicializar / resetear tabla de símbolos
             symbolTable = new SymbolTableManager();
             symbolTable.Reset();
             symbolTable.AddBuiltinFunction("printf", "int");
 
             token = NextToken();
             Cabecera();
+
             Leer.Close();
 
-            // sugerencias si faltan
             if (!hasInclude)
             {
                 TxtboxSalida.AppendText("\r\nSugerencia: No se detectó ninguna cabecera (#include o #define). Añade una directiva #include o #define si es necesario (ej: #include <stdio.h>).\r\n");
@@ -543,93 +553,116 @@ namespace Editordetexto
             }
         }
 
+        private bool EsTipoDato(string t)
+        {
+            return t == "int" || t == "float" || t == "double" || t == "char" || t == "void" || t == "Tipo";
+        }
+
         private void Cabecera()
         {
-            if (token == null || token == "Fin") return;
-
-            switch (token)
+            while (token != null && token != "Fin")
             {
-                case "#":
-                    token = NextToken();
-                    if (token == null) { Error("Directiva incompleta después de '#'"); return; }
-                    Directiva_proc();
-                    token = NextToken();
-                    Cabecera();
-                    break;
-
-                case "int":
-                case "float":
-                case "double":
-                case "char":
-                case "void":
-                case "Tipo":
-                    string tipo = token;
-                    // guardar tipo actual para que Declaracion_Variable_Global_Logica lo pueda usar
-                    currentType = tipo;
-
-                    // LEER el siguiente token (declarador). Capturamos su tipo y el nombre real ANTES
-                    // de avanzar de nuevo, para no perder lastIdentifierName.
-                    token = NextToken();
-                    string idToken = token;               // por ejemplo: "identificador"
-                    string idNombreReal = null;
-                    if (idToken == "identificador")
-                        idNombreReal = lastIdentifierName;
-                    // ahora avanzamos al siguiente token (podría ser '(' o '=' o ';' etc.)
-                    token = NextToken();
-
-                    if (token == "(")
-                    {
-                        // si es main, marcarlo (usando el nombre real si está disponible)
-                        if (!string.IsNullOrEmpty(idNombreReal) && idNombreReal == "main")
-                        {
-                            hasMain = true;
-                        }
-
-                        // registrar la función en la tabla (si tenemos nombre)
-                        string funcName = idNombreReal ?? idToken;
-                        if (!string.IsNullOrEmpty(funcName))
-                        {
-                            if (!symbolTable.AddFunction(funcName, tipo, out string err))
-                            {
-                                Error(err);
-                            }
-                        }
-
-                        // establecer nombre de la función actual para Parametros()
-                        currentFunctionName = idNombreReal ?? funcName;
-
-                        Parametros();
-                        BloqueDeSentencias();
-
+                switch (token)
+                {
+                    case "#":
                         token = NextToken();
-                        currentFunctionName = null; // limpiar
-                        Cabecera();
-                    }
-                    else
-                    {
-                        // Es una declaración global (o variable) — usar currentType
-                        // Pasamos tanto el token como el nombre real capturado (si lo tuvimos)
-                        Declaracion_Variable_Global_Logica(idToken, idNombreReal);
-                        token = NextToken();
-                        Cabecera();
-                    }
-                    break;
+                        if (token == null)
+                        {
+                            Error("Directiva incompleta después de '#'");
+                            return;
+                        }
+                        Directiva_proc();
+                        break;
 
-                default:
-                    token = NextToken();
-                    Cabecera();
-                    break;
+                    case "LF":
+                        token = NextToken();
+                        break;
+
+                    case "int":
+                    case "float":
+                    case "double":
+                    case "char":
+                    case "void":
+                    case "Tipo":
+                        ProcesarDeclaracionOFuncion();
+                        break;
+
+                    default:
+                        token = NextToken();
+                        break;
+                }
+            }
+        }
+
+        private void ProcesarDeclaracionOFuncion()
+        {
+            string tipo = token;
+            currentType = tipo;
+
+            token = NextToken();
+
+            if (token == null)
+            {
+                Error("Declaración incompleta");
+                return;
+            }
+
+            if (token != "identificador")
+            {
+                Error("Se esperaba un identificador después del tipo de dato");
+                return;
+            }
+
+            string idToken = token;
+            string idNombreReal = lastIdentifierName;
+
+            token = NextToken();
+
+            if (token == "(")
+            {
+                if (!string.IsNullOrEmpty(idNombreReal) && idNombreReal == "main")
+                    hasMain = true;
+
+                string funcName = idNombreReal ?? idToken;
+
+                if (!string.IsNullOrEmpty(funcName))
+                {
+                    if (!symbolTable.AddFunction(funcName, tipo, out string err))
+                        Error(err);
+                }
+
+                currentFunctionName = funcName;
+
+                // Ámbito de parámetros / función
+                symbolTable.EnterScope();
+
+                Parametros();
+                BloqueDeSentencias();
+
+                symbolTable.ExitScope();
+                currentFunctionName = null;
+
+                token = NextToken();
+            }
+            else
+            {
+                Declaracion_Variable_Global_Logica(idToken, idNombreReal);
+                token = NextToken();
             }
         }
 
         private void Parametros()
         {
             token = NextToken();
-            if (token == ")") { token = NextToken(); return; }
+            if (token == ")")
+            {
+                token = NextToken();
+                return;
+            }
 
             while (token != ")" && token != "Fin")
             {
-                if (token != "int" && token != "float" && token != "char" && token != "double")
+                if (!EsTipoDato(token) || token == "Tipo")
                     Error(token, "tipo de dato");
 
                 string tipoParametro = token;
@@ -643,7 +676,6 @@ namespace Editordetexto
                 }
                 else
                 {
-                    // registrar parámetro: el nombre está en lastIdentifierName
                     string nombreParametro = lastIdentifierName;
 
                     if (!string.IsNullOrEmpty(nombreParametro))
@@ -654,7 +686,6 @@ namespace Editordetexto
                         }
                     }
 
-                    // además añadir el tipo a la firma de la función definida
                     if (!string.IsNullOrEmpty(currentFunctionName))
                     {
                         var f = symbolTable.GetFunction(currentFunctionName);
@@ -683,21 +714,15 @@ namespace Editordetexto
                 if (token == ",") token = NextToken();
                 else if (token != ")") { Error(token, "',' o ')'"); return; }
             }
+
             token = NextToken();
         }
-
-
-        // ==========================================
-        //           BLOQUES Y SENTENCIAS
-        // ==========================================
 
         private void BloqueDeSentencias()
         {
             if (token != "{") { Error(token, "{"); return; }
 
-            // crear nuevo ámbito para el bloque
             symbolTable.EnterScope();
-
             token = NextToken();
 
             while (token != "}" && token != "Fin" && token != null)
@@ -711,11 +736,25 @@ namespace Editordetexto
                         Declaracion_Local();
                         break;
 
-                    case "if": EstructuraIf(); break;
-                    case "while": EstructuraWhile(); break;
-                    case "do": EstructuraDoWhile(); break;
-                    case "for": EstructuraFor(); break;
-                    case "switch": EstructuraSwitch(); break;
+                    case "if":
+                        EstructuraIf();
+                        break;
+
+                    case "while":
+                        EstructuraWhile();
+                        break;
+
+                    case "do":
+                        EstructuraDoWhile();
+                        break;
+
+                    case "for":
+                        EstructuraFor();
+                        break;
+
+                    case "switch":
+                        EstructuraSwitch();
+                        break;
 
                     case "break":
                     case "continue":
@@ -729,7 +768,7 @@ namespace Editordetexto
 
                         if (token != ";")
                         {
-                            Expresion();
+                            AnalizarExpresion();
                         }
 
                         if (token != ";") Error(token, ";");
@@ -737,11 +776,12 @@ namespace Editordetexto
                         break;
 
                     case "identificador":
-                    case "printf":
                         Sentencia();
                         break;
 
-                    case ";": token = NextToken(); break;
+                    case ";":
+                        token = NextToken();
+                        break;
 
                     case "{":
                         BloqueDeSentencias();
@@ -751,20 +791,23 @@ namespace Editordetexto
                     case "++":
                     case "--":
                         {
-                            string inc = token;
                             token = NextToken();
-                            if (token != "identificador") { Error(token, "identificador"); break; }
-                            // verificar existencia
+                            if (token != "identificador")
+                            {
+                                Error(token, "identificador");
+                                break;
+                            }
+
                             if (!symbolTable.VariableDeclared(lastIdentifierName) && !symbolTable.FunctionExists(lastIdentifierName))
                             {
                                 Error($"La variable '{lastIdentifierName}' no ha sido declarada");
                             }
+
                             token = NextToken();
                             if (token != ";") Error(token, ";");
                             token = NextToken();
                         }
                         break;
-
 
                     default:
                         Error($"Instrucción no reconocida o inválida: '{token}'");
@@ -772,11 +815,12 @@ namespace Editordetexto
                         break;
                 }
             }
+
             if (token != "}") Error("Se esperaba '}'");
 
-            // salir del ámbito del bloque
             symbolTable.ExitScope();
         }
+
         private void SentenciaOBloque()
         {
             if (token == "{")
@@ -786,7 +830,7 @@ namespace Editordetexto
                 return;
             }
 
-            if (token == "identificador" || token == "printf")
+            if (token == "identificador")
             {
                 Sentencia();
                 return;
@@ -813,9 +857,8 @@ namespace Editordetexto
         private void Sentencia()
         {
             string id = token;
-            string nameId = (id == "identificador") ? lastIdentifierName : id;
+            string nameId = lastIdentifierName;
 
-            // si es identificador, comprobar existencia (variable o función)
             if (id == "identificador")
             {
                 if (!symbolTable.VariableDeclared(nameId) && !symbolTable.FunctionExists(nameId))
@@ -828,30 +871,28 @@ namespace Editordetexto
 
             if (token == "(")
             {
-                // llamada a función — ya validamos existencia arriba
                 token = NextToken();
                 if (token != ")")
                 {
                     while (true)
                     {
-                        Expresion();
+                        AnalizarExpresion();
                         if (token == ",") { token = NextToken(); continue; }
                         else if (token == ")") break;
                         else { Error(token, ", o )"); return; }
                     }
                 }
+
                 token = NextToken();
                 if (token != ";") Error(token, ";");
                 token = NextToken();
                 return;
             }
 
-            bool tieneIndexacion = false;
             while (token == "[")
             {
-                tieneIndexacion = true;
                 token = NextToken();
-                Condicion();
+                AnalizarExpresion();
                 if (token != "]") { Error(token, "]"); return; }
                 token = NextToken();
             }
@@ -866,9 +907,8 @@ namespace Editordetexto
 
             if (token == "=" || token == "+=" || token == "-=" || token == "*=" || token == "/=" || token == "%=")
             {
-                string asign = token;
                 token = NextToken();
-                Expresion();
+                AnalizarExpresion();
                 if (token != ";") Error(token, ";");
                 token = NextToken();
                 return;
@@ -884,18 +924,16 @@ namespace Editordetexto
             token = NextToken();
         }
 
-
-
-        // ==========================================
-        //           ESTRUCTURAS DE CONTROL
-        // ==========================================
+        // =========================================================
+        // ESTRUCTURAS DE CONTROL
+        // =========================================================
 
         private void EstructuraIf()
         {
             token = NextToken();
             if (token != "(") { Error(token, "("); return; }
             token = NextToken();
-            Expresion();
+            AnalizarExpresion();
             if (token != ")") { Error(token, ")"); return; }
             token = NextToken();
 
@@ -908,19 +946,17 @@ namespace Editordetexto
             }
         }
 
-
         private void EstructuraWhile()
         {
             token = NextToken();
             if (token != "(") { Error(token, "("); return; }
             token = NextToken();
-            Expresion();
+            AnalizarExpresion();
             if (token != ")") { Error(token, ")"); return; }
             token = NextToken();
 
             SentenciaOBloque();
         }
-
 
         private void EstructuraFor()
         {
@@ -928,7 +964,7 @@ namespace Editordetexto
             if (token != "(") { Error(token, "("); return; }
             token = NextToken();
 
-            if (token == "int" || token == "float" || token == "double" || token == "char")
+            if (EsTipoDato(token) && token != "void")
             {
                 Declaracion_Local();
             }
@@ -948,7 +984,7 @@ namespace Editordetexto
 
             if (token != ";")
             {
-                Expresion();
+                AnalizarExpresion();
             }
             if (token != ";") { Error(token, ";"); return; }
             token = NextToken();
@@ -961,7 +997,7 @@ namespace Editordetexto
                     if (token == "=")
                     {
                         token = NextToken();
-                        Expresion();
+                        AnalizarExpresion();
                     }
                     else
                     {
@@ -971,14 +1007,13 @@ namespace Editordetexto
                         }
                         else
                         {
-                            Expresion();
+                            AnalizarExpresion();
                         }
                     }
-
                 }
                 else
                 {
-                    Expresion();
+                    AnalizarExpresion();
                 }
             }
 
@@ -987,7 +1022,6 @@ namespace Editordetexto
 
             SentenciaOBloque();
         }
-
 
         private void EstructuraDoWhile()
         {
@@ -999,20 +1033,19 @@ namespace Editordetexto
             token = NextToken();
             if (token != "(") { Error(token, "("); return; }
             token = NextToken();
-            Expresion();
+            AnalizarExpresion();
             if (token != ")") { Error(token, ")"); return; }
             token = NextToken();
             if (token != ";") { Error(token, ";"); return; }
             token = NextToken();
         }
 
-
         private void EstructuraSwitch()
         {
             token = NextToken();
             if (token != "(") { Error(token, "("); return; }
             token = NextToken();
-            Expresion();
+            AnalizarExpresion();
             if (token != ")") { Error(token, ")"); return; }
             token = NextToken();
             if (token != "{") { Error(token, "{"); return; }
@@ -1042,6 +1075,8 @@ namespace Editordetexto
                     token = NextToken();
                 }
             }
+
+            if (token == "}") token = NextToken();
         }
 
         private void CuerpoDelCase()
@@ -1054,306 +1089,368 @@ namespace Editordetexto
                     if (token != ";") Error(token, ";");
                     token = NextToken();
                 }
-                else if (token == "identificador" || token == "printf") Sentencia();
-                else if (token == "if") EstructuraIf();
-                else if (token == "while") EstructuraWhile();
-                else if (token == "for") EstructuraFor();
+                else if (token == "identificador")
+                {
+                    Sentencia();
+                }
+                else if (token == "if")
+                {
+                    EstructuraIf();
+                }
+                else if (token == "while")
+                {
+                    EstructuraWhile();
+                }
+                else if (token == "for")
+                {
+                    EstructuraFor();
+                }
                 else if (token == "{")
                 {
                     BloqueDeSentencias();
                     token = NextToken();
                 }
-                else token = NextToken();
-            }
-        }
-
-        // ==========================================
-        //           AUXILIARES Y DECLARACIONES
-        // ==========================================
-        private bool EsOperador(string t)
-        {
-            return t == "+" || t == "-" || t == "*" || t == "/" || t == "%" ||
-                   t == "=" || t == "==" || t == "!=" || t == ">" || t == "<" ||
-                   t == ">=" || t == "<=" || t == "&&" || t == "||" || t == "!";
-        }
-
-        private void Expresion()
-        {
-            Condicion();
-        }
-
-        private void Condicion()
-        {
-            TerminoAND();
-
-            while (token == "||" || token == "|")
-            {
-                if (token == "|")
-                {
-                    string saved = token;
-                    token = NextToken();
-                    if (token != "|")
-                    {
-                        Error(saved, "||");
-                        return;
-                    }
-                    token = NextToken();
-                }
                 else
                 {
                     token = NextToken();
                 }
-                TerminoAND();
             }
         }
 
-        private void TerminoAND()
-        {
-            ExpresionIgualdad();
+        // =========================================================
+        // ÁRBOL DE EXPRESIONES / ANÁLISIS SINTÁCTICO DE EXPRESIONES
+        // =========================================================
 
-            while (token == "&&" || token == "&")
-            {
-                if (token == "&")
-                {
-                    string saved = token;
-                    token = NextToken();
-                    if (token != "&")
-                    {
-                        Error(saved, "&&");
-                        return;
-                    }
-                    token = NextToken();
-                }
-                else
-                {
-                    token = NextToken();
-                }
-                ExpresionIgualdad();
-            }
+        private void ImprimirArbol(NodoExpresion nodo, string prefijo = "", bool esRaiz = true)
+        {
+            if (nodo == null) return;
+
+            if (esRaiz)
+                TxtboxSalida.AppendText($"Árbol: {nodo.Valor}\r\n");
+            else
+                TxtboxSalida.AppendText($"{prefijo}└── {nodo.Valor}\r\n");
+
+            string nuevoPrefijo = esRaiz ? "    " : prefijo + "    ";
+            ImprimirArbol(nodo.Izquierdo, nuevoPrefijo, false);
+            ImprimirArbol(nodo.Derecho, nuevoPrefijo, false);
         }
 
-        private void ExpresionIgualdad()
+        private bool EsInicioOperando()
         {
-            ExpresionRelacional();
-
-            bool esOperador = false;
-
-            if (token == "!" || token == "!=")
-            {
-                if (token == "!")
-                {
-                    token = NextToken();
-                    if (token == "=")
-                    {
-                        esOperador = true;
-                        token = NextToken();
-                    }
-                    else
-                    {
-                        Error("!", "operador de igualdad '!='");
-                        return;
-                    }
-                }
-                else
-                {
-                    esOperador = true;
-                    token = NextToken();
-                }
-            }
-            else if (token == "==" || token == "=")
-            {
-                if (token == "=")
-                {
-                    token = NextToken();
-                    if (token == "=")
-                    {
-                        esOperador = true;
-                        token = NextToken();
-                    }
-                    else
-                    {
-                        return;
-                    }
-                }
-                else
-                {
-                    esOperador = true;
-                    token = NextToken();
-                }
-            }
-
-            if (esOperador)
-            {
-                ExpresionRelacional();
-            }
+            return token == "identificador" ||
+                   token == "numero_entero" ||
+                   token == "numero_real" ||
+                   token == "caracter" ||
+                   token == "Cadena" ||
+                   token == "(" ||
+                   token == "++" ||
+                   token == "--" ||
+                   token == "!" ||
+                   token == "+" ||
+                   token == "-";
         }
 
-        private void ExpresionRelacional()
+        private bool EsOperadorBinario()
         {
-            ExpresionAritmetica();
+            return token == "+" || token == "-" ||
+                   token == "*" || token == "/" || token == "%" ||
+                   token == "==" || token == "!=" ||
+                   token == "<" || token == ">" ||
+                   token == "<=" || token == ">=" ||
+                   token == "&&" || token == "||";
+        }
 
-            string op = token;
-            bool esOperador = false;
-
-            if (op == "<" || op == ">" || op == "<=" || op == ">=")
+        private NodoExpresion AnalizarExpresion()
+        {
+            if (!EsInicioOperando())
             {
-                esOperador = true;
+                Error($"Se esperaba una expresión, se encontró '{token}'");
+                return new NodoExpresion("?");
+            }
+
+            NodoExpresion raiz = Expresion();
+            
+            return raiz;
+        }
+
+        private NodoExpresion Expresion()
+        {
+            return Condicion();
+        }
+
+        private NodoExpresion Condicion()
+        {
+            NodoExpresion izq = TerminoAND();
+
+            while (token == "||")
+            {
+                string op = token;
                 token = NextToken();
-
-                if ((op == "<" || op == ">") && token == "=")
-                {
-                    token = NextToken();
-                }
+                NodoExpresion der = TerminoAND();
+                izq = new NodoExpresion(op, izq, der);
             }
 
-            if (esOperador)
-            {
-                ExpresionAritmetica();
-            }
+            return izq;
         }
 
-        private void ExpresionAritmetica()
+        private NodoExpresion TerminoAND()
         {
-            Termino();
+            NodoExpresion izq = ExpresionIgualdad();
+
+            while (token == "&&")
+            {
+                string op = token;
+                token = NextToken();
+                NodoExpresion der = ExpresionIgualdad();
+                izq = new NodoExpresion(op, izq, der);
+            }
+
+            return izq;
+        }
+
+        private NodoExpresion ExpresionIgualdad()
+        {
+            NodoExpresion izq = ExpresionRelacional();
+
+            while (token == "==" || token == "!=")
+            {
+                string op = token;
+                token = NextToken();
+                NodoExpresion der = ExpresionRelacional();
+                izq = new NodoExpresion(op, izq, der);
+            }
+
+            return izq;
+        }
+
+        private NodoExpresion ExpresionRelacional()
+        {
+            NodoExpresion izq = ExpresionAritmetica();
+
+            while (token == "<" || token == ">" || token == "<=" || token == ">=")
+            {
+                string op = token;
+                token = NextToken();
+                NodoExpresion der = ExpresionAritmetica();
+                izq = new NodoExpresion(op, izq, der);
+            }
+
+            return izq;
+        }
+
+        private NodoExpresion ExpresionAritmetica()
+        {
+            NodoExpresion izq = Termino();
 
             while (token == "+" || token == "-")
             {
+                string op = token;
                 token = NextToken();
-                Termino();
+                NodoExpresion der = Termino();
+                izq = new NodoExpresion(op, izq, der);
             }
+
+            return izq;
         }
 
-        private void Termino()
+        private NodoExpresion Termino()
         {
-            Factor();
+            NodoExpresion izq = Factor();
+
             while (token == "*" || token == "/" || token == "%")
             {
+                string op = token;
                 token = NextToken();
-                Factor();
+                NodoExpresion der = Factor();
+                izq = new NodoExpresion(op, izq, der);
             }
+
+            return izq;
         }
 
-        private bool EsTipo(string t)
+        private NodoExpresion Factor()
         {
-            return t == "int" || t == "float" || t == "double" || t == "char" || t == "void";
-        }
-
-        private void Factor()
-        {
-            if (token == "++" || token == "--" || token == "!" || token == "-" || token == "+")
+            // Prefijo unario
+            if (token == "++" || token == "--" || token == "!" || token == "+" || token == "-")
             {
+                string op = token;
                 token = NextToken();
-                Factor();
-                return;
+                NodoExpresion der = Factor();
+                return new NodoExpresion(op, der, null);
             }
 
+            // Paréntesis o cast
             if (token == "(")
             {
                 token = NextToken();
-                if (token != null && EsTipo(token))
+
+                if (EsTipoDato(token))
                 {
+                    string tipoCast = token;
                     token = NextToken();
-                    if (token != ")") { Error(token, ")"); return; }
+
+                    if (token != ")")
+                    {
+                        Error(token, ")");
+                        return new NodoExpresion("?");
+                    }
+
                     token = NextToken();
-                    Factor();
-                    return;
+                    NodoExpresion ex = Factor();
+                    return new NodoExpresion($"cast:{tipoCast}", ex, null);
                 }
                 else
                 {
-                    Condicion();
-                    if (token != ")") { Error(token, ")"); return; }
+                    NodoExpresion ex = Expresion();
+
+                    if (token != ")")
+                    {
+                        Error("Falta ')' de cierre en la expresión");
+                        return new NodoExpresion("?");
+                    }
+
                     token = NextToken();
-                    return;
+                    return new NodoExpresion("()", ex, null);
                 }
             }
 
+            // Literal entero
+            if (token == "numero_entero")
+            {
+                NodoExpresion n = new NodoExpresion("numero_entero");
+                token = NextToken();
+                return n;
+            }
+
+            // Literal real
+            if (token == "numero_real")
+            {
+                NodoExpresion n = new NodoExpresion("numero_real");
+                token = NextToken();
+                return n;
+            }
+
+            // Literal carácter
+            if (token == "caracter")
+            {
+                NodoExpresion n = new NodoExpresion("caracter");
+                token = NextToken();
+                return n;
+            }
+
+            // Cadena
+            if (token == "Cadena")
+            {
+                NodoExpresion n = new NodoExpresion("Cadena");
+                token = NextToken();
+                return n;
+            }
+
+            // Identificador
             if (token == "identificador")
             {
-                // comprobar que existe variable o función
-                if (!symbolTable.VariableDeclared(lastIdentifierName) && !symbolTable.FunctionExists(lastIdentifierName))
+                string nombre = lastIdentifierName;
+
+                if (!string.IsNullOrEmpty(nombre))
                 {
-                    Error($"La variable o función '{lastIdentifierName}' no ha sido declarada");
+                    if (!symbolTable.VariableDeclared(nombre) && !symbolTable.FunctionExists(nombre))
+                    {
+                        Error($"La variable o función '{nombre}' no ha sido declarada");
+                    }
                 }
 
                 token = NextToken();
 
+                // Llamada a función
                 if (token == "(")
                 {
+                    if (!symbolTable.FunctionExists(nombre))
+                    {
+                        Error($"La función '{nombre}' no ha sido declarada");
+                    }
+
+                    NodoExpresion nodoLlamada = new NodoExpresion($"func:{nombre}");
                     token = NextToken();
+
                     if (token != ")")
                     {
-                        while (true)
+                        nodoLlamada.Izquierdo = Expresion();
+                        NodoExpresion actual = nodoLlamada;
+
+                        while (token == ",")
                         {
-                            Condicion();
-                            if (token == ",") { token = NextToken(); continue; }
-                            else if (token == ")") break;
-                            else { Error(token, ", o )"); return; }
+                            token = NextToken();
+                            NodoExpresion argExtra = Expresion();
+                            actual.Derecho = new NodoExpresion(",", argExtra, null);
+                            actual = actual.Derecho;
                         }
                     }
-                    token = NextToken();
-                    while (token == "++" || token == "--")
-                    {
+
+                    if (token != ")")
+                        Error("Falta ')' al cerrar la llamada a función");
+                    else
                         token = NextToken();
-                    }
-                    return;
+
+                    return nodoLlamada;
                 }
 
+                // Indexación
                 while (token == "[")
                 {
                     token = NextToken();
-                    Condicion();
-                    if (token != "]") { Error(token, "]"); return; }
+                    NodoExpresion indice = Expresion();
+
+                    if (token != "]")
+                    {
+                        Error("Falta ']' en la indexación");
+                        return new NodoExpresion(nombre);
+                    }
+
                     token = NextToken();
+                    nombre = $"{nombre}[idx]";
                 }
 
-                while (token == "++" || token == "--")
+                // Postfijo
+                if (token == "++" || token == "--")
                 {
+                    string opPost = token;
+                    if (!string.IsNullOrEmpty(nombre) && !symbolTable.VariableDeclared(lastIdentifierName))
+                        Error($"La variable '{lastIdentifierName}' no ha sido declarada");
+
                     token = NextToken();
+                    return new NodoExpresion(nombre + opPost);
                 }
 
-                return;
+                return new NodoExpresion(nombre);
             }
 
-            if (token == "numero_entero" || token == "numero_real" || token == "Cadena" || token == "caracter")
-            {
-                token = NextToken();
-
-                while (token == "++" || token == "--")
-                {
-                    token = NextToken();
-                }
-                return;
-            }
-
-            Error(token, "identificador, número o '('");
-            return;
+            Error($"Se esperaba un operando, se encontró '{token}'");
+            token = NextToken();
+            return new NodoExpresion("?");
         }
+
+        // =========================================================
+        // AUXILIARES Y DECLARACIONES
+        // =========================================================
 
         private void Declaracion_Local()
         {
-            // token actualmente es el tipo (ej. "int")
             currentType = token;
 
-            // avanzar para leer el declarador (esperamos identificador)
-            token = NextToken(); // ahora token debería ser "identificador"
+            token = NextToken();
             string idToken = token;
 
-            // capturar el nombre real inmediatamente si es identificador
             string nombreIdent = null;
             if (idToken == "identificador")
                 nombreIdent = lastIdentifierName;
 
-            // avanzar al siguiente token (esto podría borrar lastIdentifierName)
             token = NextToken();
 
-            // pasar tanto el token como el nombre real al procesador
             Declaracion_Variable_Global_Logica(idToken, nombreIdent);
 
-            // después de procesar la declaración, continuar leyendo siguiente token
             token = NextToken();
         }
 
-        // antiguo: private void Declaracion_Variable_Global_Logica(string identificador_actual)
         private void Declaracion_Variable_Global_Logica(string identificador_actual, string nombreReal = null)
         {
             void ProcesarDeclarador()
@@ -1381,12 +1478,11 @@ namespace Editordetexto
                     }
                     else
                     {
-                        Expresion();
+                        AnalizarExpresion();
                     }
                 }
             }
 
-            // registrar el primer identificador si aplica
             if (identificador_actual == "identificador")
             {
                 string nombre = nombreReal ?? lastIdentifierName;
@@ -1399,7 +1495,6 @@ namespace Editordetexto
                 }
                 else
                 {
-                    // caso improbable: no tenemos nombre real disponible
                     Error("Identificador sin nombre disponible para la declaración");
                 }
             }
@@ -1411,13 +1506,9 @@ namespace Editordetexto
                 token = NextToken();
                 if (token != "identificador") { Error(token, "identificador"); return; }
 
-                // capturar nombre real del siguiente identificador (ya que NextToken lo dejó en lastIdentifierName)
                 string nombre2 = lastIdentifierName;
-
-                // avanzar al token siguiente al identificador
                 token = NextToken();
 
-                // registrar la variable
                 if (!string.IsNullOrEmpty(nombre2))
                 {
                     if (!symbolTable.AddVariable(nombre2, currentType, out string errAdd2))
@@ -1448,77 +1539,96 @@ namespace Editordetexto
                 {
                     token = NextToken();
                 }
-                else { Error(token, "valor o sub-arreglo"); return; }
+                else
+                {
+                    Error(token, "valor o sub-arreglo");
+                    return;
+                }
 
                 if (token == ",") token = NextToken();
                 else if (token == "}") break;
                 else { Error(token, "',' o '}'"); return; }
             }
+
             token = NextToken();
         }
 
         private int Directiva_proc()
         {
-            while (token == "LF") token = Leer.ReadLine();
-            if (token == null) { Error("Directiva incompleta"); return 0; }
-
-            switch (token)
+            if (token == "include")
             {
-                case "include":
-                    token = Leer.ReadLine();
-                    while (token == "LF") token = Leer.ReadLine();
-                    if (token == null) { Error("Include incompleto"); return 0; }
-                    return Directiva_include();
+                token = NextToken();
+                while (token == "LF") token = NextToken();
 
-                case "define":
-                    token = Leer.ReadLine();
-                    while (token == "LF") token = Leer.ReadLine();
-                    if (token == null) { Error("define incompleto"); return 0; }
-                    // consideramos define como cabecera válida
-                    hasInclude = true;
-                    return 1;
-
-                default:
-                    Error("include o define");
+                if (token == null || token == "Fin")
+                {
+                    Error("Include incompleto");
                     return 0;
+                }
+
+                return Directiva_include();
             }
+            else if (token == "define")
+            {
+                hasInclude = true;
+                token = NextToken();
+
+                while (token != null && token != "Fin" && token != "LF")
+                    token = NextToken();
+
+                return 1;
+            }
+
+            Error("include o define");
+            return 0;
         }
 
         private int Directiva_include()
         {
-            while (token == "LF") { Numero_linea++; token = Leer.ReadLine(); }
+            while (token == "LF")
+            {
+                Numero_linea++;
+                token = NextToken();
+            }
+
             if (token == null) return 0;
 
             if (token == "<")
             {
-                token = Leer.ReadLine();
-                if (token == null) { Error("libreria inválida"); return 0; }
-                token = Leer.ReadLine();
-                if (token != ">") { Error(token, ">"); return 0; }
-                // marcar que hay include
-                hasInclude = true;
+                token = NextToken();
+                bool tieneContenido = false;
+
+                while (token != ">" && token != "Fin" && token != "LF" && token != null)
+                {
+                    if (token != "libreria")
+                        tieneContenido = true;
+
+                    token = NextToken();
+                }
+
+                if (token != ">")
+                {
+                    Error(token, ">");
+                    return 0;
+                }
+
+                if (!tieneContenido)
+                    hasInclude = true;
+                else
+                    hasInclude = true;
+
+                token = NextToken();
                 return 1;
             }
             else if (token == "Cadena")
             {
                 hasInclude = true;
+                token = NextToken();
                 return 1;
             }
 
             Error("Formato include");
             return 0;
-        }
-
-        private void TxtboxSalida_TextChanged(object sender, EventArgs e)
-        {
-            compilarSoluciónToolStripMenuItem.Enabled = true;
-        }
-        private void compilarToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-        }
-        private void CajaTxt1_TextChanged(object sender, EventArgs e)
-        {
-            compilarSoluciónToolStripMenuItem.Enabled = true;
         }
     }
 }
