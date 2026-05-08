@@ -21,7 +21,8 @@ namespace Editordetexto
         private string lastIdentifierName;    // nombre real del ultimo identificador devuelto por NextToken
         private bool hasInclude;              // true si se detectó include/define válido
         private bool hasMain;                 // true si se detectó función main
-
+        private List<string> LiteralesNumericos;
+        private int litConsumeIndex;
         // Tabla de símbolos
         private SymbolTableManager symbolTable;
         private string currentType; // tipo actual durante declaraciones
@@ -46,6 +47,7 @@ namespace Editordetexto
             };
 
             Identificadores = new List<string>();
+            LiteralesNumericos = new List<string>();
         }
 
         // =========================================================
@@ -320,29 +322,38 @@ namespace Editordetexto
 
         private void Numero()
         {
+            string valorNum = "";
+            valorNum += (char)i_caracter; // dígito inicial
             do
             {
                 i_caracter = Leer.Read();
-            } while (Tipo_caracter(i_caracter) == 'd');
+                if (Tipo_caracter(i_caracter) == 'd') valorNum += (char)i_caracter;
+                else break;
+            } while (true);
 
             if ((char)i_caracter == '.')
             {
-                Numero_Real();
+                LiteralesNumericos.Add(valorNum); // guardar parte entera para número real
+                Numero_Real(valorNum);
                 return;
             }
 
+            LiteralesNumericos.Add(valorNum);
             Escribir.Write("numero_entero\n");
         }
 
-        private void Numero_Real()
+        private void Numero_Real(string parteEntera = "")
         {
+            string valorNum = parteEntera + ".";
             i_caracter = Leer.Read();
-
             while (Tipo_caracter(i_caracter) == 'd')
             {
+                valorNum += (char)i_caracter;
                 i_caracter = Leer.Read();
             }
-
+            // Actualiza el último valor (ya lo agregaste en Numero())
+            if (LiteralesNumericos.Count > 0)
+                LiteralesNumericos[LiteralesNumericos.Count - 1] = valorNum;
             Escribir.Write("numero_real\n");
         }
 
@@ -444,6 +455,8 @@ namespace Editordetexto
 
         private void AnalizadorLexico()
         {
+            LiteralesNumericos.Clear();
+            litConsumeIndex = 0;
             Numero_linea = 1;
             N_error = 0;
 
@@ -526,6 +539,7 @@ namespace Editordetexto
 
         private void AnalizadorSintactico()
         {
+            litConsumeIndex = 0;
             Numero_linea = 1;
             Leer = new StreamReader(archivoback);
 
@@ -1121,20 +1135,19 @@ namespace Editordetexto
         // ÁRBOL DE EXPRESIONES / ANÁLISIS SINTÁCTICO DE EXPRESIONES
         // =========================================================
 
-        private void ImprimirArbol(NodoExpresion nodo, string prefijo = "", bool esRaiz = true)
+        private void ImprimirArbol(NodoExpresion nodo, string prefijo = "", bool esHijoIzq = true, bool esRaiz = true)
         {
             if (nodo == null) return;
 
             if (esRaiz)
-                TxtboxSalida.AppendText($"Árbol: {nodo.Valor}\r\n");
+                TxtboxSalida.AppendText($"   [{nodo.Valor}]\r\n");
             else
-                TxtboxSalida.AppendText($"{prefijo}└── {nodo.Valor}\r\n");
+                TxtboxSalida.AppendText($"{prefijo}{(esHijoIzq ? "├─izq─ " : "└─der─ ")}[{nodo.Valor}]\r\n");
 
-            string nuevoPrefijo = esRaiz ? "    " : prefijo + "    ";
-            ImprimirArbol(nodo.Izquierdo, nuevoPrefijo, false);
-            ImprimirArbol(nodo.Derecho, nuevoPrefijo, false);
+            string nuevoPrefijo = esRaiz ? "   " : prefijo + (esHijoIzq ? "│      " : "       ");
+            ImprimirArbol(nodo.Izquierdo, nuevoPrefijo, true, false);
+            ImprimirArbol(nodo.Derecho, nuevoPrefijo, false, false);
         }
-
         private bool EsInicioOperando()
         {
             return token == "identificador" ||
@@ -1159,7 +1172,90 @@ namespace Editordetexto
                    token == "<=" || token == ">=" ||
                    token == "&&" || token == "||";
         }
+        // Determina si es aritmética, relacional o lógica según el nodo raíz
+        private string TipoDeExpresion(NodoExpresion raiz)
+        {
+            if (raiz == null) return "desconocida";
+            switch (raiz.Valor)
+            {
+                case "||":
+                case "&&":
+                case "!":
+                    return "lógica";
+                case "==":
+                case "!=":
+                case "<":
+                case ">":
+                case "<=":
+                case ">=":
+                    return "relacional";
+                case "+":
+                case "-":
+                case "*":
+                case "/":
+                case "%":
+                    return "aritmética";
+                default:
+                    return "operando simple";
+            }
+        }
 
+        // Evalúa el árbol cuando los nodos son valores literales numéricos
+        private double? EvaluarArbol(NodoExpresion nodo)
+        {
+            if (nodo == null) return null;
+
+            // Hoja: intentar parsear como número
+            if (nodo.Izquierdo == null && nodo.Derecho == null)
+            {
+                if (double.TryParse(nodo.Valor,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out double val))
+                    return val;
+
+                return null;
+            }
+
+            double? izq = EvaluarArbol(nodo.Izquierdo);
+            double? der = EvaluarArbol(nodo.Derecho);
+
+            switch (nodo.Valor)
+            {
+                case "+":
+                    return (izq.HasValue && der.HasValue) ? (double?)(izq.Value + der.Value) : null;
+                case "-":
+                    return (izq.HasValue && der.HasValue) ? (double?)(izq.Value - der.Value) : null;
+                case "*":
+                    return (izq.HasValue && der.HasValue) ? (double?)(izq.Value * der.Value) : null;
+                case "/":
+                    return (izq.HasValue && der.HasValue && der.Value != 0) ? (double?)(izq.Value / der.Value) : null;
+                case "%":
+                    return (izq.HasValue && der.HasValue && der.Value != 0)
+                        ? (double?)((int)izq.Value % (int)der.Value)
+                        : null;
+                case "==":
+                    return (izq.HasValue && der.HasValue) ? (double?)(izq.Value == der.Value ? 1.0 : 0.0) : null;
+                case "!=":
+                    return (izq.HasValue && der.HasValue) ? (double?)(izq.Value != der.Value ? 1.0 : 0.0) : null;
+                case "<":
+                    return (izq.HasValue && der.HasValue) ? (double?)(izq.Value < der.Value ? 1.0 : 0.0) : null;
+                case ">":
+                    return (izq.HasValue && der.HasValue) ? (double?)(izq.Value > der.Value ? 1.0 : 0.0) : null;
+                case "<=":
+                    return (izq.HasValue && der.HasValue) ? (double?)(izq.Value <= der.Value ? 1.0 : 0.0) : null;
+                case ">=":
+                    return (izq.HasValue && der.HasValue) ? (double?)(izq.Value >= der.Value ? 1.0 : 0.0) : null;
+                case "&&":
+                    return (izq.HasValue && der.HasValue) ? (double?)((izq.Value != 0 && der.Value != 0) ? 1.0 : 0.0) : null;
+                case "||":
+                    return (izq.HasValue && der.HasValue) ? (double?)((izq.Value != 0 || der.Value != 0) ? 1.0 : 0.0) : null;
+                case "!":
+                    return izq.HasValue ? (double?)(izq.Value == 0 ? 1.0 : 0.0) : null;
+                default:
+                    return null;
+            }
+        }
         private NodoExpresion AnalizarExpresion()
         {
             if (!EsInicioOperando())
@@ -1169,7 +1265,26 @@ namespace Editordetexto
             }
 
             NodoExpresion raiz = Expresion();
+
             
+            string tipo = TipoDeExpresion(raiz);
+            TxtboxSalida.AppendText($"\r\n── Expresión {tipo} ──\r\n");
+            ImprimirArbol(raiz);
+
+            double? resultado = EvaluarArbol(raiz);
+            if (resultado.HasValue)
+            {
+                TxtboxSalida.AppendText($"   Resultado: {resultado.Value}\r\n");
+                // Tipo del resultado
+                bool esEntero = (resultado.Value == Math.Floor(resultado.Value));
+                TxtboxSalida.AppendText($"   Tipo resultado: {(esEntero ? "int" : "double")}\r\n");
+            }
+            else
+            {
+                TxtboxSalida.AppendText($"");
+                //TxtboxSalida.AppendText($"   (Contiene variables — no se puede evaluar en tiempo de compilación)\r\n");
+            }
+
             return raiz;
         }
 
@@ -1195,19 +1310,28 @@ namespace Editordetexto
 
         private NodoExpresion TerminoAND()
         {
-            NodoExpresion izq = ExpresionIgualdad();
+            NodoExpresion izq = NivelNot();
 
             while (token == "&&")
             {
                 string op = token;
                 token = NextToken();
-                NodoExpresion der = ExpresionIgualdad();
+                NodoExpresion der = NivelNot(); 
                 izq = new NodoExpresion(op, izq, der);
             }
-
             return izq;
         }
-
+        private NodoExpresion NivelNot()
+        {
+            if (token == "!")
+            {
+                string op = token;
+                token = NextToken();
+                NodoExpresion operando = NivelNot(); // recursivo para "not not x"
+                return new NodoExpresion(op, operando, null);
+            }
+            return ExpresionIgualdad();
+        }
         private NodoExpresion ExpresionIgualdad()
         {
             NodoExpresion izq = ExpresionRelacional();
@@ -1271,7 +1395,7 @@ namespace Editordetexto
         private NodoExpresion Factor()
         {
             // Prefijo unario
-            if (token == "++" || token == "--" || token == "!" || token == "+" || token == "-")
+            if (token == "++" || token == "--" || token == "+" || token == "-")
             {
                 string op = token;
                 token = NextToken();
@@ -1317,17 +1441,21 @@ namespace Editordetexto
             // Literal entero
             if (token == "numero_entero")
             {
-                NodoExpresion n = new NodoExpresion("numero_entero");
+                string val = (litConsumeIndex < LiteralesNumericos.Count)
+                             ? LiteralesNumericos[litConsumeIndex++]
+                             : "?";
                 token = NextToken();
-                return n;
+                return new NodoExpresion(val);
             }
 
             // Literal real
             if (token == "numero_real")
             {
-                NodoExpresion n = new NodoExpresion("numero_real");
+                string val = (litConsumeIndex < LiteralesNumericos.Count)
+                             ? LiteralesNumericos[litConsumeIndex++]
+                             : "?";
                 token = NextToken();
-                return n;
+                return new NodoExpresion(val);
             }
 
             // Literal carácter
